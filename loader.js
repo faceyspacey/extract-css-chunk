@@ -20,6 +20,8 @@ module.exports = function(source) {
 };
 
 module.exports.pitch = function(request) {
+	var self = this;
+	var remainingRequest = request;
 	if(this.cacheable) this.cacheable();
 	var query = loaderUtils.getOptions(this) || {};
 	var loaders = this.loaders.slice(this.loaderIndex + 1);
@@ -56,7 +58,7 @@ module.exports.pitch = function(request) {
 		childCompiler.apply(new LibraryTemplatePlugin(null, "commonjs2"));
 		childCompiler.apply(new NodeTargetPlugin());
 		childCompiler.apply(new SingleEntryPlugin(this.context, "!!" + request));
-		childCompiler.apply(new LimitChunkCountPlugin({ maxChunks: 1 }));
+		// childCompiler.apply(new LimitChunkCountPlugin({ maxChunks: 1 }));
 		var subCache = "subcache " + NS + " " + request; // eslint-disable-line no-path-concat
 		childCompiler.plugin("compilation", function(compilation) {
 			if(compilation.cache) {
@@ -134,10 +136,13 @@ if (module.hot) {
 		require('${extractTextPluginHmrRuntime}')('%%extracted-hash%%','${publicPath}','%%extracted-file%%');
 	}
 }`;
+					// unfortunately this won't work and the initial harmless yellow warning logs as a result:
+					// module.hot.accept(${loaderUtils.stringifyRequest(self, '!!'+request)}, function() {...
 				}
 			} catch(e) {
 				return callback(e);
 			}
+
 			if(resultSource)
 				callback(null, resultSource);
 			else

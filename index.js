@@ -271,7 +271,10 @@ ExtractTextPlugin.prototype.apply = function(compiler) {
 			});
 			async.forEach(chunks, function(chunk, callback) {
 				var extractedChunk = extractedChunks[chunks.indexOf(chunk)];
-				var shouldExtract = !!(options.allChunks || chunk.isInitial());
+
+				// SETTING THIS TO TRUE INSURES ALL CHUNKS ARE HANDLED:
+				var shouldExtract = true; //!!(options.allChunks || chunk.isInitial());
+
 				async.forEach(chunk.modules.slice(), function(module, callback) {
 					var meta = module[NS];
 					if(meta && (!meta.options.id || meta.options.id === id)) {
@@ -305,22 +308,57 @@ ExtractTextPlugin.prototype.apply = function(compiler) {
 				});
 			}, function(err) {
 				if(err) return callback(err);
-				extractedChunks.forEach(function(extractedChunk) {
-					if(extractedChunk.isInitial())
-						this.mergeNonInitialChunks(extractedChunk);
-				}, this);
-				extractedChunks.forEach(function(extractedChunk) {
-					if(!extractedChunk.isInitial()) {
-						extractedChunk.modules.slice().forEach(function(module) {
-							extractedChunk.removeModule(module);
-						});
-					}
-				});
+				// REMOVING THIS CODE IS ALL THAT'S NEEDED TO CREATE CSS FILES PER CHUNK:
+				// extractedChunks.forEach(function(extractedChunk) {
+				// 	if(extractedChunk.isInitial())
+				// 		this.mergeNonInitialChunks(extractedChunk);
+				// }, this);
+				// extractedChunks.forEach(function(extractedChunk) {
+				// 	if(!extractedChunk.isInitial()) {
+				// 		extractedChunk.modules.slice().forEach(function(module) {
+				// 			extractedChunk.removeModule(module);
+				// 		});
+				// 	}
+				// });
 				compilation.applyPlugins("optimize-extracted-chunks", extractedChunks);
 				callback();
 			}.bind(this));
 		}.bind(this));
+
 		compilation.plugin("before-chunk-assets", function() {
+			// This appears to be the latest hook where the %%extracted-file%% and hash replacements work on initial load. Any later and the contents of modules appears to be sealed and changes don't have any effect until the next hot update.
+			extractedChunks.forEach(function(extractedChunk) {
+				if(extractedChunk.modules.length) {
+					extractedChunk.modules.sort(function(a, b) {
+						if(!options.ignoreOrder && isInvalidOrder(a, b)) {
+							compilation.errors.push(new OrderUndefinedError(a.getOriginalModule()));
+							compilation.errors.push(new OrderUndefinedError(b.getOriginalModule()));
+						}
+						return getOrder(a, b);
+					});
+					var chunk = extractedChunk.originalChunk;
+					var source = this.renderExtractedChunk(extractedChunk);
+
+					var getPath = (format) => compilation.getPath(format, {
+						chunk: chunk
+					}).replace(/\[(?:(\w+):)?contenthash(?::([a-z]+\d*))?(?::(\d+))?\]/ig, function() {
+						return loaderUtils.getHashDigest(source.source(), arguments[1], arguments[2], parseInt(arguments[3], 10));
+					});
+
+					var file = (isFunction(filename)) ? filename(getPath) : getPath(filename);
+					var hash = file.replace(/\.css$/, '').split('.').pop()
+
+					// Hot module replacement
+					extractedChunk.modules.forEach(function(module){
+						var originalModule = module.getOriginalModule();
+						originalModule._source._value = originalModule._source._value.replace('%%extracted-file%%', file);
+						originalModule._source._value = originalModule._source._value.replace('%%extracted-hash%%', hash) // compilation.hash);
+					});
+				}
+			}, this);
+		}.bind(this));
+
+		compilation.plugin("additional-assets", function(callback) {
 			// This appears to be the latest hook where the %%extracted-file%% and hash replacements work on initial load. Any later and the contents of modules appears to be sealed and changes don't have any effect until the next hot update.
 			extractedChunks.forEach(function(extractedChunk) {
 				if(extractedChunk.modules.length) {
@@ -344,15 +382,10 @@ ExtractTextPlugin.prototype.apply = function(compiler) {
 					
 					compilation.assets[file] = source;
 					chunk.files.push(file);
-
-					// Hot module replacement
-					extractedChunk.modules.forEach(function(module){
-						var originalModule = module.getOriginalModule();
-						originalModule._source._value = originalModule._source._value.replace('%%extracted-file%%', file);
-						originalModule._source._value = originalModule._source._value.replace('%%extracted-hash%%', compilation.hash);
-					});
 				}
 			}, this);
+			callback()
 		}.bind(this));
+		
 	}.bind(this));
 };
