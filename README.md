@@ -19,6 +19,8 @@
 
 ```bash
 # for webpack 2
+
+[![Greenkeeper badge](https://badges.greenkeeper.io/faceyspacey/extract-css-chunk.svg)](https://greenkeeper.io/)
 npm install --save-dev extract-text-webpack-plugin
 # for webpack 1
 npm install --save-dev extract-text-webpack-plugin@1.0.1
